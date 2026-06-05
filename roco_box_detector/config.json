@@ -25,8 +25,10 @@
     "scale_max": 1.25,
     "scale_steps": 5,
     "use_grayscale": true,
-    "preprocess_mode": "gamma",
+    "preprocess_mode": "clahe",
     "gamma": 1.5,
+    "clip_limit": 2.0,
+    "grid_size": 8,
     "early_exit_score": 0.9,
     "coarse_threshold": 0.3
   },
@@ -56,12 +58,14 @@
         "templates/patterns/普通4.png",
         "templates/patterns/普通9.png"
       ],
-      "threshold": 0.65,
+      "threshold": 0.60,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     },
     "奇异": {
       "templates": [
@@ -72,12 +76,14 @@
         "templates/patterns/奇异4.png",
         "templates/patterns/奇异1.png"
       ],
-      "threshold": 0.65,
+      "threshold": 0.60,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     },
     "污染": {
       "templates": [
@@ -85,12 +91,14 @@
         "templates/patterns/污染2.png",
         "templates/patterns/污染3.png"
       ],
-      "threshold": 0.65,
+      "threshold": 0.60,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     },
     "混血": {
       "templates": [
@@ -100,24 +108,28 @@
         "templates/patterns/混血4.png",
         "templates/patterns/混血5.png"
       ],
-      "threshold": 0.65,
+      "threshold": 0.60,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     },
     "异色": {
       "templates": [
         "templates/patterns/异色1.png",
         "templates/patterns/异色2.png"
       ],
-      "threshold": 0.65,
+      "threshold": 0.60,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     }
   },
   "patterns_2": {
@@ -128,12 +140,14 @@
         "templates/patterns_2/物防3.png",
         "templates/patterns_2/物防4.png"
       ],
-      "threshold": 0.6,
+      "threshold": 0.55,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     },
     "魔防": {
       "templates": [
@@ -141,12 +155,14 @@
         "templates/patterns_2/魔防2.png",
         "templates/patterns_2/魔防3.png"
       ],
-      "threshold": 0.65,
+      "threshold": 0.55,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     },
     "物攻": {
       "templates": [
@@ -155,12 +171,14 @@
         "templates/patterns_2/物攻3.png",
         "templates/patterns_2/物攻4.png"
       ],
-      "threshold": 0.65,
+      "threshold": 0.55,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     },
     "魔攻": {
       "templates": [
@@ -168,12 +186,14 @@
         "templates/patterns_2/魔攻2.png",
         "templates/patterns_2/魔攻3.png"
       ],
-      "threshold": 0.65,
+      "threshold": 0.55,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     },
     "生命": {
       "templates": [
@@ -183,35 +203,54 @@
         "templates/patterns_2/生命4.png",
         "templates/patterns_2/生命5.png"
       ],
-      "threshold": 0.65,
+      "threshold": 0.55,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     },
     "速度": {
       "templates": [
         "templates/patterns_2/速度1.png",
         "templates/patterns_2/速度2.png"
       ],
-      "threshold": 0.65,
+      "threshold": 0.55,
       "scale_min": 0.65,
       "scale_max": 1.35,
       "scale_steps": 8,
       "use_grayscale": true,
-      "use_canny": false
+      "preprocess_mode": "clahe",
+      "clip_limit": 2.0,
+      "grid_size": 8
     }
+  },
+  "feature_matching": {
+    "enabled": true,
+    "orb_nfeatures": 200,
+    "orb_scale_factor": 1.2,
+    "orb_nlevels": 4,
+    "color_bins_h": 30,
+    "color_bins_s": 32,
+    "color_bins_v": 32,
+    "ensemble_weights": [0.50, 0.30, 0.20],
+    "orb_ratio_threshold": 0.75,
+    "orb_min_matches": 3,
+    "orb_fallback_threshold": 0.35,
+    "color_fallback_threshold": 0.30,
+    "template_boost_threshold": 0.72
   },
   "sequence": {
     "enabled": true,
     "sample_delay_seconds": 0.5,
     "sample_interval_seconds": 0.01,
-    "max_frames": 3,
-    "min_frames_for_vote": 2,
-    "selected_frame_count": 3,
-    "min_vote_count": 2,
-    "min_average_score": 0.7,
+    "max_frames": 5,
+    "min_frames_for_vote": 3,
+    "selected_frame_count": 5,
+    "min_vote_count": 3,
+    "min_average_score": 0.65,
     "require_roi2_for_result": false,
     "stable_similarity_threshold": 0.88,
     "frame_resize_width": 96,
@@ -223,8 +262,8 @@
   "runtime": {
     "capture_fps": 30,
     "hide_after_frames": 10,
-    "normalize_roi_width": 250,
-    "pattern_normalize_width": 100,
+    "normalize_roi_width": 400,
+    "pattern_normalize_width": 150,
     "anchor_skip_frames": 0,
     "log_every_n_frames": 100,
     "sequence_cooldown_seconds": 1.5

@@ -15,6 +15,7 @@ from image_utils import (preprocess_image, resize_by_width,
 from geometry_utils import SubRoiConfig, compute_sub_roi, scale_box
 from template_cache import TemplateCache, TemplateItem
 from debug_utils import DebugDrawer, ThrottledLogger
+from feature_matcher import FeatureMatcher
 from sequence_analyzer import (
     SequenceFrame,
     FrameMatchResult,
@@ -263,6 +264,8 @@ class CascadeDetector(threading.Thread):
 
         self._logger = ThrottledLogger(every_n=self._log_every)
         self._frame_idx = 0
+        self._feature_matcher: Optional[FeatureMatcher] = None
+        self._fm_config: dict = {}
 
         # Reusable mss instance, created in run()
         self._sct: Optional[mss.mss] = None
@@ -351,6 +354,24 @@ class CascadeDetector(threading.Thread):
         self._require_roi2 = bool(seq.get("require_roi2_for_result", False))
         sr2 = config.get("sub_roi_2", {})
         self._roi2_enabled = bool(sr2.get("enabled", False))
+
+        # Feature matcher
+        fm = config.get("feature_matching", {})
+        self._fm_config = fm
+        if fm.get("enabled", True):
+            weights = fm.get("ensemble_weights", [0.5, 0.3, 0.2])
+            self._feature_matcher = FeatureMatcher(
+                orb_nfeatures=fm.get("orb_nfeatures", 200),
+                orb_scale_factor=fm.get("orb_scale_factor", 1.2),
+                orb_nlevels=fm.get("orb_nlevels", 4),
+                color_bins_h=fm.get("color_bins_h", 30),
+                color_bins_s=fm.get("color_bins_s", 32),
+                color_bins_v=fm.get("color_bins_v", 32),
+                ensemble_weights=(weights[0], weights[1], weights[2]),
+            )
+            self.cache.set_feature_matcher(self._feature_matcher)
+        else:
+            self._feature_matcher = None
 
     def update_config(self, config: dict) -> None:
         self._load_all_config(config)
@@ -870,7 +891,9 @@ class CascadeDetector(threading.Thread):
                     fr = match_single_frame_to_patterns(
                         sf.sub_roi_image, sf.sub_roi_box, sf.index,
                         self.cache.get_pattern_groups(), roi_name="roi1",
-                        norm_width=self._pat_norm_width)
+                        norm_width=self._pat_norm_width,
+                        feature_matcher=self._feature_matcher,
+                        fm_config=self._fm_config)
                     fr1_list.append(fr)
                     print(f"[Finalize] roi1 frame {sf.index} label={fr.label} "
                           f"score={fr.score:.2f} took={time.time()-t:.3f}s")
@@ -894,7 +917,9 @@ class CascadeDetector(threading.Thread):
                         fr = match_single_frame_to_patterns(
                             sf.sub_roi_image_2, sf.sub_roi_box_2, sf.index,
                             self.cache.get_pattern_groups_2(), roi_name="roi2",
-                            norm_width=self._pat_norm_width)
+                            norm_width=self._pat_norm_width,
+                            feature_matcher=self._feature_matcher,
+                            fm_config=self._fm_config)
                         fr2_list.append(fr)
                         print(f"[Finalize] roi2 frame {sf.index} label={fr.label} "
                               f"score={fr.score:.2f} took={time.time()-t:.3f}s")

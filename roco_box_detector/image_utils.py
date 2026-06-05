@@ -46,13 +46,26 @@ def imread_chinese(path: str) -> np.ndarray | None:
         return None
 
 
-def apply_preprocess(gray: np.ndarray, mode: str, gamma: float = 0.75) -> np.ndarray:
+def apply_clahe(gray: np.ndarray, clip_limit: float = 2.0, grid_size: int = 8) -> np.ndarray:
+    """Apply CLAHE (Contrast Limited Adaptive Histogram Equalization).
+
+    Adaptively enhances local contrast — much more robust than global gamma
+    for game screenshots with varying lighting / gradient backgrounds.
+    """
+    if gray is None or gray.size == 0:
+        return gray
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(grid_size, grid_size))
+    return clahe.apply(gray)
+
+
+def apply_preprocess(gray: np.ndarray, mode: str, gamma: float = 0.75, clip_limit: float = 2.0, grid_size: int = 8) -> np.ndarray:
     """Apply a post-grayscale preprocessing mode.
 
     Modes:
-      "none"   — pass-through
-      "gamma"  — gamma correction (gamma < 1 brightens, > 1 darkens)
-      "otsu"   — Otsu binary threshold (0 or 255)
+      "none"    — pass-through
+      "gamma"   — gamma correction (gamma < 1 brightens, > 1 darkens)
+      "otsu"    — Otsu binary threshold (0 or 255)
+      "clahe"   — CLAHE adaptive histogram equalization
     """
     if gray is None or mode == "none" or not mode:
         return gray
@@ -62,6 +75,8 @@ def apply_preprocess(gray: np.ndarray, mode: str, gamma: float = 0.75) -> np.nda
     if mode == "otsu":
         _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return binary
+    if mode == "clahe":
+        return apply_clahe(gray, clip_limit, grid_size)
     return gray
 
 
@@ -70,13 +85,15 @@ def preprocess_image(
     use_grayscale: bool = True,
     preprocess_mode: str = "none",
     gamma: float = 0.75,
+    clip_limit: float = 2.0,
+    grid_size: int = 8,
 ) -> np.ndarray | None:
     """Unified preprocessing for both ROI frames and templates."""
     if image is None:
         return None
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image.copy()
     if use_grayscale:
-        return apply_preprocess(gray, preprocess_mode, gamma)
+        return apply_preprocess(gray, preprocess_mode, gamma, clip_limit, grid_size)
     return image if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
 

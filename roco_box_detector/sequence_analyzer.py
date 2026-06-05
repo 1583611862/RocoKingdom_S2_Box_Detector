@@ -10,6 +10,7 @@ import numpy as np
 from image_utils import (preprocess_image, resize_by_width,
                          safe_resize_template, safe_resize_mask)
 from template_cache import TemplateCache, TemplateGroup, TemplateItem
+from feature_matcher import FeatureMatcher
 
 
 @dataclass
@@ -183,11 +184,13 @@ def match_single_frame_to_patterns(
     pattern_groups: Dict[str, TemplateGroup],
     roi_name: str = "roi1",
     norm_width: int = 0,
+    feature_matcher: Optional[FeatureMatcher] = None,
+    fm_config: Optional[dict] = None,
 ) -> FrameMatchResult:
     """
     Match a single sub_roi frame against all pattern groups.
-    If norm_width > 0, the sub_roi is normalized to that width first,
-    and box coordinates are scaled back to original sub_roi space.
+    Uses template matching as primary, with optional feature-based
+    ensemble matching as fallback when score is uncertain.
     """
     best_result = FrameMatchResult(
         frame_index=frame_index,
@@ -210,6 +213,10 @@ def match_single_frame_to_patterns(
         pat_scale = norm_width / sub_roi_image.shape[1]
         sub_roi_image = resize_by_width(sub_roi_image, norm_width)
 
+    # ── Stage 1: Template matching (primary) ──
+    # Store best match per group for later ensemble fallback
+    group_best: Dict[str, Tuple[float, Optional[Tuple], Optional[str], float]] = {}
+
     for pname, pgroup in pattern_groups.items():
         if not pgroup.items:
             continue
@@ -217,6 +224,9 @@ def match_single_frame_to_patterns(
         sub_processed = preprocess_image(
             sub_roi_image,
             use_grayscale=pgroup.use_grayscale,
+            preprocess_mode=pgroup.preprocess_mode,
+            clip_limit=pgroup.clip_limit,
+            grid_size=pgroup.grid_size,
         )
         if sub_processed is None or sub_processed.size == 0:
             continue
@@ -276,6 +286,121 @@ def match_single_frame_to_patterns(
             )
             if result.score > best_result.score:
                 best_result = result
+            group_best[pname] = (best_score, best_box, best_tmpl_path, best_scale)
+
+    # ── Stage 2: Ensemble fallback for uncertain results ──
+    if (feature_matcher is not None and fm_config is not None
+            and fm_config.get("enabled", True)
+            and not best_result.matched
+            and best_result.score > 0
+            and best_result.label is not None):
+        best_result = _ensemble_fallback(
+            sub_roi_image, sub_roi_box, frame_index,
+            best_result, group_best, pattern_groups,
+            roi_name, pat_scale, feature_matcher, fm_config,
+        )
+
+    return best_result
+
+
+def _ensemble_fallback(
+    sub_roi_image: np.ndarray,
+    sub_roi_box: Tuple[int, int, int, int],
+    frame_index: int,
+    best_result: FrameMatchResult,
+    group_best: Dict[str, Tuple[float, Optional[Tuple], Optional[str], float]],
+    pattern_groups: Dict[str, TemplateGroup],
+    roi_name: str,
+    pat_scale: float,
+    fm: FeatureMatcher,
+    fm_config: dict,
+) -> FrameMatchResult:
+    """
+    Stage 2 fallback: when template matching score is below threshold
+    but above fallback threshold, run ORB + color histogram matching
+    on the top-N candidate groups to see if ensemble score is sufficient.
+    """
+    sx, sy, sw, sh = sub_roi_box
+
+    top_n = min(fm_config.get("top_n_candidates", 3), len(group_best))
+    sorted_groups = sorted(
+        group_best.items(), key=lambda x: x[1][0], reverse=True
+    )[:top_n]
+
+    orb_fallback_thresh = fm_config.get("orb_fallback_threshold", 0.35)
+    color_fallback_thresh = fm_config.get("color_fallback_threshold", 0.30)
+    template_boost_thresh = fm_config.get("template_boost_threshold", 0.72)
+
+    # Precompute query features once
+    q_orb = fm.extract_orb(sub_roi_image)
+    q_hist = fm.extract_color_histogram(sub_roi_image)
+
+    best_ensemble = None
+
+    for pname, (tmpl_score, tmpl_box, tmpl_path, tmpl_scale) in sorted_groups:
+        if tmpl_box is None:
+            continue
+
+        pgroup = pattern_groups.get(pname)
+        if pgroup is None:
+            continue
+
+        # Find best matching template for feature comparison
+        best_tmpl_item = None
+        best_tmpl_sim = -1.0
+        for item in pgroup.items:
+            if item.orb_features is None or item.color_hist is None:
+                continue
+            csim = fm.match_color_histogram(q_hist, item.color_hist)
+            if csim > best_tmpl_sim:
+                best_tmpl_sim = csim
+                best_tmpl_item = item
+
+        if best_tmpl_item is None:
+            continue
+
+        # Color histogram match
+        color_score = fm.match_color_histogram(q_hist, best_tmpl_item.color_hist)
+        if color_score < color_fallback_thresh:
+            continue
+
+        # ORB feature match
+        orb_score, orb_inliers = fm.match_orb(
+            q_orb.descriptors,
+            best_tmpl_item.orb_features.descriptors,
+            q_orb.keypoints,
+            best_tmpl_item.orb_features.keypoints,
+            ratio_threshold=fm_config.get("orb_ratio_threshold", 0.75),
+            min_matches=fm_config.get("orb_min_matches", 3),
+        )
+        if orb_score < 0.15 and color_score < template_boost_thresh:
+            continue
+
+        # Ensemble
+        ens = fm.ensemble(pname, tmpl_score, color_score, orb_score,
+                          threshold=pgroup.threshold)
+
+        if best_ensemble is None or ens.ensemble_score > best_ensemble.ensemble_score:
+            best_ensemble = ens
+            best_tmpl_path = best_tmpl_item.path
+
+    if best_ensemble is not None and best_ensemble.ensemble_score > best_result.score:
+        lx, ly, lw, lh = group_best.get(best_ensemble.label, (0, None, None, None))[1] or (0, 0, 1, 1)
+        if pat_scale != 1.0:
+            inv = 1.0 / pat_scale
+            lx, ly, lw, lh = (int(lx * inv), int(ly * inv),
+                               int(lw * inv), int(lh * inv))
+        return FrameMatchResult(
+            frame_index=frame_index,
+            label=best_ensemble.label,
+            matched=best_ensemble.matched,
+            score=best_ensemble.ensemble_score,
+            template_path=best_tmpl_path,
+            scale=group_best.get(best_ensemble.label, (0, None, None, 1.0))[3],
+            box_in_sub_roi=(lx, ly, lw, lh),
+            box_in_roi=(sx + lx, sy + ly, lw, lh),
+            roi_name=roi_name,
+        )
 
     return best_result
 

@@ -10,6 +10,7 @@ from image_utils import (
     imread_chinese, preprocess_image, make_gaussian_mask,
     safe_resize_template, safe_resize_mask,
 )
+from feature_matcher import FeatureMatcher, OrbFeatures, ColorHistogram
 
 
 @dataclass
@@ -30,6 +31,8 @@ class TemplateItem:
     image_gray: np.ndarray
     mask: Optional[np.ndarray] = None
     scaled_variants: List[ScaledVariant] = field(default_factory=list)
+    orb_features: Optional[OrbFeatures] = None
+    color_hist: Optional[ColorHistogram] = None
 
 
 @dataclass
@@ -43,6 +46,8 @@ class TemplateGroup:
     items: List[TemplateItem] = field(default_factory=list)
     preprocess_mode: str = "none"
     gamma: float = 0.75
+    clip_limit: float = 2.0
+    grid_size: int = 8
 
 
 class TemplateCache:
@@ -53,7 +58,12 @@ class TemplateCache:
         self.anchor_group: Optional[TemplateGroup] = None
         self.pattern_groups: Dict[str, TemplateGroup] = {}
         self.pattern_groups_2: Dict[str, TemplateGroup] = {}
+        self.feature_matcher: Optional[FeatureMatcher] = None
         self._load_all(config)
+
+    def set_feature_matcher(self, matcher: FeatureMatcher) -> None:
+        self.feature_matcher = matcher
+        self._compute_all_features()
 
     # ── public ──────────────────────────────────────────────────────────
 
@@ -84,6 +94,8 @@ class TemplateCache:
         self.pattern_groups.clear()
         self.pattern_groups_2.clear()
         self._load_all(config)
+        if self.feature_matcher is not None:
+            self._compute_all_features()
         cnt2 = self.pattern_count_2
         print(f"[Cache] Reloaded: {self.anchor_count} anchor templates, "
               f"{self.pattern_count} p1 templates across "
@@ -129,6 +141,10 @@ class TemplateCache:
                 pcfg["scale_min"], pcfg["scale_max"], pcfg["scale_steps"],
                 pcfg["use_grayscale"],
                 with_mask=True, pre_scale=True,
+                preprocess_mode=pcfg.get("preprocess_mode", "none"),
+                gamma=pcfg.get("gamma", 0.75),
+                clip_limit=pcfg.get("clip_limit", 2.0),
+                grid_size=pcfg.get("grid_size", 8),
             )
             self.pattern_groups[name] = group
 
@@ -138,19 +154,24 @@ class TemplateCache:
                 pcfg["scale_min"], pcfg["scale_max"], pcfg["scale_steps"],
                 pcfg["use_grayscale"],
                 with_mask=True, pre_scale=True,
+                preprocess_mode=pcfg.get("preprocess_mode", "none"),
+                gamma=pcfg.get("gamma", 0.75),
+                clip_limit=pcfg.get("clip_limit", 2.0),
+                grid_size=pcfg.get("grid_size", 8),
             )
             self.pattern_groups_2[name] = group
 
     def _load_group(
         self, paths, label, threshold, scale_min, scale_max, scale_steps,
         use_grayscale, with_mask=False, pre_scale=True,
-        preprocess_mode="none", gamma=0.75,
+        preprocess_mode="none", gamma=0.75, clip_limit=2.0, grid_size=8,
     ) -> TemplateGroup:
         group = TemplateGroup(
             label=label, threshold=threshold,
             scale_min=scale_min, scale_max=scale_max, scale_steps=scale_steps,
             use_grayscale=use_grayscale,
             preprocess_mode=preprocess_mode, gamma=gamma,
+            clip_limit=clip_limit, grid_size=grid_size,
         )
         for p in paths:
             item = self._load_item(p, label, use_grayscale,
@@ -175,6 +196,30 @@ class TemplateCache:
         mask = make_gaussian_mask(img.shape[1], img.shape[0]) if with_mask else None
         return TemplateItem(path=path, label=label, image_color=img,
                             image_gray=gray, mask=mask)
+
+    def _compute_all_features(self) -> None:
+        if self.feature_matcher is None:
+            return
+        self._compute_group_features(self.anchor_group)
+        for group in self.pattern_groups.values():
+            self._compute_group_features(group)
+        for group in self.pattern_groups_2.values():
+            self._compute_group_features(group)
+
+    def _compute_group_features(self, group: Optional[TemplateGroup]) -> None:
+        if group is None or not group.items:
+            return
+        for item in group.items:
+            self._compute_item_features(item)
+
+    def _compute_item_features(self, item: TemplateItem) -> None:
+        if self.feature_matcher is None:
+            return
+        if item.color_hist is not None:
+            return
+        if item.image_color is not None and item.image_color.size > 0:
+            item.orb_features = self.feature_matcher.extract_orb(item.image_color)
+            item.color_hist = self.feature_matcher.extract_color_histogram(item.image_color)
 
     @staticmethod
     def _pre_scale_items(
